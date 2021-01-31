@@ -4,7 +4,7 @@ TARGET_NAME=qed
 
 all: test build
 build:
-	go build -o bin/$(TARGET_NAME) -v ./main.go
+	go build -o bin/$(TARGET_NAME) -v examples/main.go
 test:
 	echo "Write some tests!" && exit 0
 fmt:
