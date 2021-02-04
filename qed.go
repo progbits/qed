@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"log"
 	"math/rand"
+	"sync"
 	"time"
 
 	_ "github.com/lib/pq"
@@ -28,6 +29,7 @@ var schema = `
 type Qed struct {
 	db       *sql.DB
 	handlers map[string]func([]byte) error
+	mutex    sync.RWMutex
 }
 
 func NewQed(db *sql.DB) *Qed {
@@ -43,6 +45,8 @@ func NewQed(db *sql.DB) *Qed {
 }
 
 func (q *Qed) AddHandler(queue string, handler func([]byte) error) {
+	q.mutex.Lock()
+	defer q.mutex.Unlock()
 	q.handlers[queue] = handler
 }
 
@@ -75,7 +79,10 @@ func (q *Qed) Run() {
 		}
 
 		go func() {
+			q.mutex.RLock()
 			handler, ok := q.handlers[queue]
+			q.mutex.RUnlock()
+
 			if !ok {
 				log.Printf("no handler registered for queue %s\n", queue)
 				_, err := q.db.Exec("UPDATE qed SET status = 'Pending' WHERE job_id = $1", jobId)
