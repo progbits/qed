@@ -57,11 +57,8 @@ func main() {
 		panic(err)
 	}
 
-	queue := &qed.Qed{
-		Db:      db,
-		Handler: handler,
-	}
-	queue.Init()
+	queue := qed.NewQed(db)
+	queue.AddHandler(handler)
 
 	go producer(queue)
 	queue.Run()

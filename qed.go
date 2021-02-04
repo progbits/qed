@@ -25,20 +25,28 @@ var schema = `
 `
 
 type Qed struct {
-	Db      *sql.DB
-	Handler func([]byte) error
+	db      *sql.DB
+	handler func([]byte) error
 }
 
-func (q *Qed) Init() {
-	_, err := q.Db.Exec(schema)
+func NewQed(db *sql.DB) *Qed {
+	_, err := db.Exec(schema)
 	if err != nil {
 		panic(err)
 	}
+
+	return &Qed{
+		db: db,
+	}
+}
+
+func (q *Qed) AddHandler(handler func([]byte) error) {
+	q.handler = handler
 }
 
 func (q *Qed) Run() {
 	for {
-		row := q.Db.QueryRow(`
+		row := q.db.QueryRow(`
 			UPDATE qed
 			SET status = 'Running'
 			WHERE job_id = (
@@ -64,14 +72,14 @@ func (q *Qed) Run() {
 		}
 
 		go func() {
-			err = q.Handler(data)
+			err = q.handler(data)
 			if err == nil {
-				_, err := q.Db.Exec("UPDATE qed SET status = 'Succeeded' WHERE job_id = $1", jobId)
+				_, err := q.db.Exec("UPDATE qed SET status = 'Succeeded' WHERE job_id = $1", jobId)
 				if err != nil {
 					panic(err)
 				}
 			} else {
-				_, err := q.Db.Exec("UPDATE qed SET status = 'Failed' WHERE job_id = $1", jobId)
+				_, err := q.db.Exec("UPDATE qed SET status = 'Failed' WHERE job_id = $1", jobId)
 				if err != nil {
 					panic(err)
 				}
@@ -85,7 +93,7 @@ func (q *Qed) Run() {
 
 // AddJob adds a new job to the queue with an associated payload.
 func (q *Qed) AddJob(payload []byte) {
-	_, err := q.Db.Exec("INSERT INTO qed(payload) VALUES($1)", payload)
+	_, err := q.db.Exec("INSERT INTO qed(payload) VALUES($1)", payload)
 	if err != nil {
 		panic(err)
 	}
