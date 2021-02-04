@@ -26,8 +26,8 @@ var schema = `
 `
 
 type Qed struct {
-	db      *sql.DB
-	handler func([]byte) error
+	db       *sql.DB
+	handlers map[string]func([]byte) error
 }
 
 func NewQed(db *sql.DB) *Qed {
@@ -37,12 +37,13 @@ func NewQed(db *sql.DB) *Qed {
 	}
 
 	return &Qed{
-		db: db,
+		db:       db,
+		handlers: make(map[string]func([]byte) error),
 	}
 }
 
-func (q *Qed) AddHandler(handler func([]byte) error) {
-	q.handler = handler
+func (q *Qed) AddHandler(queue string, handler func([]byte) error) {
+	q.handlers[queue] = handler
 }
 
 func (q *Qed) Run() {
@@ -57,12 +58,13 @@ func (q *Qed) Run() {
 				LIMIT 1
 				FOR UPDATE SKIP LOCKED
 			)
-			RETURNING job_id, payload
+			RETURNING job_id, queue, payload
 		`)
 
 		var jobId string
+		var queue string
 		var data []byte
-		err := row.Scan(&jobId, &data)
+		err := row.Scan(&jobId, &queue, &data)
 		if err != nil && err != sql.ErrNoRows {
 			panic(err)
 		}
@@ -73,7 +75,17 @@ func (q *Qed) Run() {
 		}
 
 		go func() {
-			err = q.handler(data)
+			handler, ok := q.handlers[queue]
+			if !ok {
+				log.Printf("no handler registered for queue %s\n", queue)
+				_, err := q.db.Exec("UPDATE qed SET status = 'Pending' WHERE job_id = $1", jobId)
+				if err != nil {
+					panic(err)
+				}
+				return
+			}
+
+			err = handler(data)
 			if err == nil {
 				_, err := q.db.Exec("UPDATE qed SET status = 'Succeeded' WHERE job_id = $1", jobId)
 				if err != nil {
@@ -92,9 +104,9 @@ func (q *Qed) Run() {
 	}
 }
 
-// AddJob adds a new job to the queue with an associated payload.
-func (q *Qed) AddJob(payload []byte) {
-	_, err := q.db.Exec("INSERT INTO qed(queue, payload) VALUES($1, $2)", "default", payload)
+// AddJob adds a new job to the named queue with an associated payload.
+func (q *Qed) AddJob(queue string, payload []byte) {
+	_, err := q.db.Exec("INSERT INTO qed(queue, payload) VALUES($1, $2)", queue, payload)
 	if err != nil {
 		panic(err)
 	}

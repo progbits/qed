@@ -27,7 +27,7 @@ func handler(payload []byte) error {
 
 func producer(qed *qed.Qed) {
 	for {
-		qed.AddJob([]byte(fmt.Sprintf("%d", counter)))
+		qed.AddJob("mailer", []byte(fmt.Sprintf("%d", counter)))
 		atomic.AddInt32(&counter, 1)
 		time.Sleep(time.Duration(rand.Intn(1000)) * time.Microsecond)
 	}
@@ -58,7 +58,7 @@ func main() {
 	}
 
 	queue := qed.NewQed(db)
-	queue.AddHandler(handler)
+	queue.AddHandler("mailer", handler)
 
 	go producer(queue)
 	queue.Run()
