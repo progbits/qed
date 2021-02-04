@@ -19,6 +19,7 @@ var schema = `
 
 	CREATE TABLE IF NOT EXISTS qed(
 		job_id 		UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+		queue 		TEXT NOT NULL,
 		status 		JOB_STATUS DEFAULT 'Pending',
 		payload 	BYTEA
 	)
@@ -93,7 +94,7 @@ func (q *Qed) Run() {
 
 // AddJob adds a new job to the queue with an associated payload.
 func (q *Qed) AddJob(payload []byte) {
-	_, err := q.db.Exec("INSERT INTO qed(payload) VALUES($1)", payload)
+	_, err := q.db.Exec("INSERT INTO qed(queue, payload) VALUES($1, $2)", "default", payload)
 	if err != nil {
 		panic(err)
 	}
