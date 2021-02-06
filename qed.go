@@ -11,17 +11,17 @@ import (
 )
 
 var schema = `
-	CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+	DROP SCHEMA IF EXISTS qed CASCADE;
+	
+	CREATE SCHEMA IF NOT EXISTS qed;
+	CREATE EXTENSION IF NOT EXISTS "uuid-ossp" WITH SCHEMA qed;
 
-	DROP TABLE IF EXISTS qed;
+	CREATE TYPE qed.JOB_STATUS as ENUM ('Pending', 'Running', 'Succeeded', 'Failed');
 
-	DROP TYPE IF EXISTS JOB_STATUS;
-	CREATE TYPE JOB_STATUS as ENUM ('Pending', 'Running', 'Succeeded', 'Failed');
-
-	CREATE TABLE IF NOT EXISTS qed(
-		job_id 		UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+	CREATE TABLE IF NOT EXISTS qed.job(
+		job_id 		UUID PRIMARY KEY DEFAULT qed.uuid_generate_v4(),
 		queue 		TEXT NOT NULL,
-		status 		JOB_STATUS DEFAULT 'Pending',
+		status 		qed.JOB_STATUS DEFAULT 'Pending',
 		payload 	BYTEA
 	)
 `
@@ -53,11 +53,11 @@ func (q *Qed) AddHandler(queue string, handler func([]byte) error) {
 func (q *Qed) Run() {
 	for {
 		row := q.db.QueryRow(`
-			UPDATE qed
+			UPDATE qed.job
 			SET status = 'Running'
 			WHERE job_id = (
 				SELECT job_id 
-				FROM qed 
+				FROM qed.job
 				WHERE status = 'Pending' 
 				LIMIT 1
 				FOR UPDATE SKIP LOCKED
@@ -85,7 +85,12 @@ func (q *Qed) Run() {
 
 			if !ok {
 				log.Printf("no handler registered for queue %s\n", queue)
-				_, err := q.db.Exec("UPDATE qed SET status = 'Pending' WHERE job_id = $1", jobId)
+				_, err := q.db.Exec(
+					"UPDATE qed.job "+
+						"SET status = 'Pending' "+
+						"WHERE job_id = $1",
+					jobId,
+				)
 				if err != nil {
 					panic(err)
 				}
@@ -94,12 +99,22 @@ func (q *Qed) Run() {
 
 			err = handler(data)
 			if err == nil {
-				_, err := q.db.Exec("UPDATE qed SET status = 'Succeeded' WHERE job_id = $1", jobId)
+				_, err := q.db.Exec(
+					"UPDATE qed.job "+
+						"SET status = 'Succeeded' "+
+						"WHERE job_id = $1",
+					jobId,
+				)
 				if err != nil {
 					panic(err)
 				}
 			} else {
-				_, err := q.db.Exec("UPDATE qed SET status = 'Failed' WHERE job_id = $1", jobId)
+				_, err := q.db.Exec(
+					"UPDATE qed.job "+
+						"SET status = 'Failed' "+
+						"WHERE job_id = $1",
+					jobId,
+				)
 				if err != nil {
 					panic(err)
 				}
@@ -107,13 +122,13 @@ func (q *Qed) Run() {
 		}()
 
 	wait:
-		time.Sleep(time.Duration(rand.Intn(1000)) * time.Microsecond)
+		time.Sleep(time.Duration(rand.Intn(5)) * time.Second)
 	}
 }
 
 // AddJob adds a new job to the named queue with an associated payload.
 func (q *Qed) AddJob(queue string, payload []byte) {
-	_, err := q.db.Exec("INSERT INTO qed(queue, payload) VALUES($1, $2)", queue, payload)
+	_, err := q.db.Exec("INSERT INTO qed.job(queue, payload) VALUES($1, $2)", queue, payload)
 	if err != nil {
 		panic(err)
 	}
