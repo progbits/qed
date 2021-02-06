@@ -3,7 +3,6 @@ package qed
 import (
 	"database/sql"
 	"log"
-	"math/rand"
 	"sync"
 	"time"
 
@@ -29,10 +28,11 @@ var schema = `
 type Qed struct {
 	db       *sql.DB
 	handlers map[string]func([]byte) error
+	tick     time.Duration
 	mutex    sync.RWMutex
 }
 
-func NewQed(db *sql.DB) *Qed {
+func NewQed(db *sql.DB, tick time.Duration) *Qed {
 	_, err := db.Exec(schema)
 	if err != nil {
 		panic(err)
@@ -41,6 +41,7 @@ func NewQed(db *sql.DB) *Qed {
 	return &Qed{
 		db:       db,
 		handlers: make(map[string]func([]byte) error),
+		tick:     tick,
 	}
 }
 
@@ -107,7 +108,7 @@ func (q *Qed) Run() {
 		}()
 
 	wait:
-		time.Sleep(time.Duration(rand.Intn(5)) * time.Second)
+		time.Sleep(q.tick)
 	}
 }
 

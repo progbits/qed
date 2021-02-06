@@ -57,7 +57,7 @@ func main() {
 		panic(err)
 	}
 
-	queue := qed.NewQed(db)
+	queue := qed.NewQed(db, 2*time.Second)
 	queue.AddHandler("mailer", handler)
 
 	go producer(queue)
