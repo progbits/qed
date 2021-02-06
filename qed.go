@@ -85,11 +85,7 @@ func (q *Qed) Run() {
 
 			if !ok {
 				log.Printf("no handler registered for queue %s\n", queue)
-				_, err := q.db.Exec(`
-					UPDATE qed.job
-					SET status = 'Pending'
-					WHERE job_id = $1`,
-					jobId)
+				err = q.updateJobStatus(jobId, "Pending")
 				if err != nil {
 					panic(err)
 				}
@@ -98,20 +94,12 @@ func (q *Qed) Run() {
 
 			err = handler(data)
 			if err == nil {
-				_, err := q.db.Exec(`
-					UPDATE qed.job
-					SET status = 'Succeeded'
-					WHERE job_id = $1`,
-					jobId)
+				err = q.updateJobStatus(jobId, "Succeeded")
 				if err != nil {
 					panic(err)
 				}
 			} else {
-				_, err := q.db.Exec(`
-					UPDATE qed.job
-					SET status = 'Failed'
-					WHERE job_id = $1`,
-					jobId)
+				err = q.updateJobStatus(jobId, "Failed")
 				if err != nil {
 					panic(err)
 				}
@@ -121,6 +109,15 @@ func (q *Qed) Run() {
 	wait:
 		time.Sleep(time.Duration(rand.Intn(5)) * time.Second)
 	}
+}
+
+func (q *Qed) updateJobStatus(jobId string, status string) error {
+	_, err := q.db.Exec(`
+		UPDATE qed.job
+		SET status = $1
+		WHERE job_id = $2`,
+		status, jobId)
+	return err
 }
 
 // AddJob adds a new job to the named queue with an associated payload.
