@@ -45,15 +45,62 @@ func NewQed(db *sql.DB, tick time.Duration) *Qed {
 	}
 }
 
+// AddHandler adds a new handler for the named queue.
 func (q *Qed) AddHandler(queue string, handler func([]byte) error) {
 	q.mutex.Lock()
 	defer q.mutex.Unlock()
 	q.handlers[queue] = handler
 }
 
+// Run starts the main queue polling loop.
 func (q *Qed) Run() {
 	for {
-		row := q.db.QueryRow(`
+		job := q.fetchNextPendingJob()
+		if job != nil {
+			q.mutex.RLock()
+			handler, ok := q.handlers[job.queue]
+			q.mutex.RUnlock()
+			if !ok {
+				log.Printf("no handler registered for queue %s\n", job.queue)
+				err := q.updateJobStatus(job.id, "Pending")
+				if err != nil {
+					panic(err)
+				}
+				return
+			}
+			go q.handleJob(job, handler)
+		} else {
+			log.Println("no jobs queued")
+		}
+		time.Sleep(q.tick)
+	}
+}
+
+func (q *Qed) handleJob(job *job, handler func([]byte) error) {
+	err := handler(job.data)
+	if err == nil {
+		err = q.updateJobStatus(job.id, "Succeeded")
+		if err != nil {
+			panic(err)
+		}
+	} else {
+		err = q.updateJobStatus(job.id, "Failed")
+		if err != nil {
+			panic(err)
+		}
+	}
+}
+
+type job struct {
+	id    string
+	queue string
+	data  []byte
+}
+
+// fetchNextPendingJob fetches the next job in the `Pending` status from the
+// queue and updates its status to `Running`.
+func (q *Qed) fetchNextPendingJob() *job {
+	row := q.db.QueryRow(`
 			UPDATE qed.job
 			SET status = 'Running'
 			WHERE job_id = (
@@ -66,50 +113,16 @@ func (q *Qed) Run() {
 			RETURNING job_id, queue, payload
 		`)
 
-		var jobId string
-		var queue string
-		var data []byte
-		err := row.Scan(&jobId, &queue, &data)
-		if err != nil && err != sql.ErrNoRows {
-			panic(err)
-		}
-
-		if err == sql.ErrNoRows {
-			log.Println("no jobs queued")
-			goto wait
-		}
-
-		go func() {
-			q.mutex.RLock()
-			handler, ok := q.handlers[queue]
-			q.mutex.RUnlock()
-
-			if !ok {
-				log.Printf("no handler registered for queue %s\n", queue)
-				err = q.updateJobStatus(jobId, "Pending")
-				if err != nil {
-					panic(err)
-				}
-				return
-			}
-
-			err = handler(data)
-			if err == nil {
-				err = q.updateJobStatus(jobId, "Succeeded")
-				if err != nil {
-					panic(err)
-				}
-			} else {
-				err = q.updateJobStatus(jobId, "Failed")
-				if err != nil {
-					panic(err)
-				}
-			}
-		}()
-
-	wait:
-		time.Sleep(q.tick)
+	job := job{}
+	err := row.Scan(&job.id, &job.queue, &job.data)
+	if err != nil && err != sql.ErrNoRows {
+		panic(err)
 	}
+
+	if err == sql.ErrNoRows {
+		return nil
+	}
+	return &job
 }
 
 func (q *Qed) updateJobStatus(jobId string, status string) error {
