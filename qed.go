@@ -26,6 +26,20 @@ var schema = `
 	)
 `
 
+var atomicFetchJob = `
+UPDATE qed.job
+SET status = 'Running'
+WHERE job_id = (
+    SELECT job_id
+    FROM qed.job
+    WHERE status = 'Pending'
+    ORDER BY submitted_at
+    LIMIT 1
+    FOR UPDATE SKIP LOCKED
+)
+RETURNING job_id, queue, payload
+`
+
 type Qed struct {
 	db       *sql.DB
 	handlers map[string]func([]byte) error
@@ -99,19 +113,7 @@ type job struct {
 // fetchNextPendingJob fetches the next job in the `Pending` status from the
 // queue and updates its status to `Running`.
 func (q *Qed) fetchNextPendingJob() *job {
-	row := q.db.QueryRow(`
-			UPDATE qed.job
-			SET status = 'Running'
-			WHERE job_id = (
-				SELECT job_id 
-				FROM qed.job
-				WHERE status = 'Pending' 
-				ORDER BY submitted_at
-				LIMIT 1
-				FOR UPDATE SKIP LOCKED
-			)
-			RETURNING job_id, queue, payload
-		`)
+	row := q.db.QueryRow(atomicFetchJob)
 
 	job := job{}
 	err := row.Scan(&job.id, &job.queue, &job.data)
