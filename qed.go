@@ -20,7 +20,7 @@ var schema = `
 	CREATE TABLE IF NOT EXISTS qed.job(
 		job_id 			UUID PRIMARY KEY DEFAULT qed.uuid_generate_v4(),
 		queue 			TEXT NOT NULL,
-	    submitted_at 	TIMESTAMP DEFAULT now(),
+		submitted_at 	TIMESTAMP DEFAULT now(),
 		status 			qed.JOB_STATUS DEFAULT 'Pending',
 		payload 		BYTEA
 	)
