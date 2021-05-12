@@ -77,17 +77,15 @@ func (q *Qed) Run() {
 }
 
 func (q *Qed) handleJob(job *job, handler func([]byte) error) {
+	status := "Succeeded"
 	err := handler(job.data)
-	if err == nil {
-		err = q.updateJobStatus(job.id, "Succeeded")
-		if err != nil {
-			panic(err)
-		}
-	} else {
-		err = q.updateJobStatus(job.id, "Failed")
-		if err != nil {
-			panic(err)
-		}
+	if err != nil {
+		status = "Failed"
+	}
+
+	err = q.updateJobStatus(job.id, status)
+	if err != nil {
+		panic(err)
 	}
 }
 
