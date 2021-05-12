@@ -18,10 +18,11 @@ var schema = `
 	CREATE TYPE qed.JOB_STATUS as ENUM ('Pending', 'Running', 'Succeeded', 'Failed');
 
 	CREATE TABLE IF NOT EXISTS qed.job(
-		job_id 		UUID PRIMARY KEY DEFAULT qed.uuid_generate_v4(),
-		queue 		TEXT NOT NULL,
-		status 		qed.JOB_STATUS DEFAULT 'Pending',
-		payload 	BYTEA
+		job_id 			UUID PRIMARY KEY DEFAULT qed.uuid_generate_v4(),
+		queue 			TEXT NOT NULL,
+	    submitted_at 	TIMESTAMP DEFAULT now(),
+		status 			qed.JOB_STATUS DEFAULT 'Pending',
+		payload 		BYTEA
 	)
 `
 
@@ -105,6 +106,7 @@ func (q *Qed) fetchNextPendingJob() *job {
 				SELECT job_id 
 				FROM qed.job
 				WHERE status = 'Pending' 
+				ORDER BY submitted_at
 				LIMIT 1
 				FOR UPDATE SKIP LOCKED
 			)
