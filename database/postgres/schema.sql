@@ -2,7 +2,7 @@ CREATE TABLE IF NOT EXISTS qed_job
 (
     job_id       TEXT PRIMARY KEY,
     queue        TEXT NOT NULL,
-    data         JSONB,
+    data         BYTEA,
     delivered    BOOLEAN default false,
     delivered_at TIMESTAMPTZ,
     not_before   TIMESTAMPTZ default now(),
@@ -11,10 +11,10 @@ CREATE TABLE IF NOT EXISTS qed_job
 
 -- Enqueue a new job with data onto the named queue.
 CREATE OR REPLACE FUNCTION qed_enqueue(
-    id TEXT,
+    id         TEXT,
     queue_name TEXT,
-    job_data JSONB,
-    run_after TIMESTAMPTZ default now()) RETURNS VOID AS
+    job_data   BYTEA,
+    run_after  TIMESTAMPTZ default now()) RETURNS VOID AS
     $$
     BEGIN
         INSERT INTO qed_job(job_id, queue, data, not_before)
@@ -25,26 +25,24 @@ CREATE OR REPLACE FUNCTION qed_enqueue(
 
 -- Atomically mark a job as 'out for delivery'.
 CREATE OR REPLACE FUNCTION qed_dequeue()
-    RETURNS TABLE(job_id TEXT, queue TEXT, data JSONB) AS
+    RETURNS TABLE(job_id TEXT, queue TEXT, data BYTEA) AS
         $$
-        BEGIN
-            UPDATE qed_job
-            SET delivered = true,
-                delivered_at = now()
-            WHERE job_id = (
-                SELECT job_id
-                FROM qed_job
-                WHERE delivered = false
-                    AND not_before < now()
-                ORDER BY created_at DESC
-                LIMIT 1
-                FOR UPDATE
-                SKIP LOCKED
-            )
-            RETURNING job_id, queue, data;
-        END
+        UPDATE qed_job
+        SET delivered = true,
+            delivered_at = now()
+        WHERE qed_job.job_id = (
+            SELECT qed_job.job_id
+            FROM qed_job
+            WHERE delivered = false
+                AND not_before < now()
+            ORDER BY created_at DESC
+            LIMIT 1
+            FOR UPDATE
+            SKIP LOCKED
+        )
+        RETURNING qed_job.job_id, qed_job.queue, qed_job.data;
         $$
-    LANGUAGE 'plpgsql';
+    LANGUAGE 'sql';
 
 -- Acknowledge (delete) a job from the queue.
 CREATE OR REPLACE FUNCTION qed_ack(id TEXT)
