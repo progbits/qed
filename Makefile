@@ -3,14 +3,19 @@
 TARGET_NAME=qed
 
 all: test build
+
 build:
-	go build -o bin/$(TARGET_NAME) -v examples/main.go
+	go build -o bin/$(TARGET_NAME) -v examples/hello/main.go
+
 test:
-	echo "Write some tests!" && exit 0
+	go test -count=1 ./...
+
 fmt:
 	go fmt ./...
+
 clean:
 	go clean
 	@rm -r bin
+
 run: build
 	./bin/$(TARGET_NAME)
