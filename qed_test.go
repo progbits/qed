@@ -3,6 +3,7 @@ package qed
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"github.com/docker/docker/api/types"
 	"github.com/docker/docker/api/types/container"
@@ -22,13 +23,17 @@ const (
 	PostgresImage = "postgres:14.3"
 )
 
+// setupPostgres starts a new dockerized PostgreSQL instance, applies project
+// schema migrations and returns a handle to the database.
 func setupPostgres(t *testing.T) (*sql.DB, func(), error) {
-	ctx := context.Background()
-	cli, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
+	cli, err := client.NewClientWithOpts(
+		client.FromEnv,
+		client.WithAPIVersionNegotiation())
 	if err != nil {
 		return nil, nil, err
 	}
 
+	ctx := context.Background()
 	out, err := cli.ImagePull(ctx, PostgresImage, types.ImagePullOptions{})
 	if err != nil {
 		return nil, nil, err
@@ -36,18 +41,30 @@ func setupPostgres(t *testing.T) (*sql.DB, func(), error) {
 	defer out.Close()
 	io.Copy(os.Stdout, out)
 
+	port := "5432"
+	password := "password"
+	database := "postgres"
 	resp, err := cli.ContainerCreate(
 		ctx,
 		&container.Config{
-			ExposedPorts: map[nat.Port]struct{}{"5432": {}},
+			ExposedPorts: map[nat.Port]struct{}{
+				nat.Port(port): {},
+			},
 			Env: []string{
-				"POSTGRES_PASSWORD=password",
-				"POSTGRES_DB=postgres",
+				fmt.Sprintf("POSTGRES_PASSWORD=%s", password),
+				fmt.Sprintf("POSTGRES_DB=%s", database),
 			},
 			Image: PostgresImage,
 		},
 		&container.HostConfig{
-			PortBindings: map[nat.Port][]nat.PortBinding{"5432": {{HostIP: "localhost", HostPort: "5432"}}},
+			PortBindings: map[nat.Port][]nat.PortBinding{
+				nat.Port(port): {
+					{
+						HostIP:   "localhost",
+						HostPort: port,
+					},
+				},
+			},
 		},
 		nil,
 		nil,
@@ -57,7 +74,10 @@ func setupPostgres(t *testing.T) (*sql.DB, func(), error) {
 	}
 
 	cleanup := func() {
-		err = cli.ContainerRemove(ctx, resp.ID, types.ContainerRemoveOptions{Force: true})
+		err := cli.ContainerRemove(
+			ctx,
+			resp.ID,
+			types.ContainerRemoveOptions{Force: true})
 		if err != nil {
 			t.Log(err)
 		}
@@ -74,9 +94,9 @@ func setupPostgres(t *testing.T) (*sql.DB, func(), error) {
 	connStr := fmt.Sprintf(
 		"host=%s port=%s user=%s password=%s dbname=postgres sslmode=disable",
 		"localhost",
-		"5432",
-		"postgres",
-		"password",
+		port,
+		database,
+		password,
 	)
 	db, err := sql.Open("postgres", connStr)
 	if err != nil {
@@ -85,6 +105,7 @@ func setupPostgres(t *testing.T) (*sql.DB, func(), error) {
 	}
 
 	// Wait for the database to start.
+	started := false
 	retryCount := 16
 	for i := 0; i < retryCount; i++ {
 		_, err = db.Exec("SELECT 1")
@@ -92,16 +113,24 @@ func setupPostgres(t *testing.T) (*sql.DB, func(), error) {
 			time.Sleep(time.Second)
 			continue
 		}
+		started = true
 		break
 	}
 
-	// Apply the schema migration.
+	if !started {
+		// Database failed to start.
+		cleanup()
+		return nil, nil, errors.New("failed to start database")
+	}
+
+	// Load the schema.
 	migration, err := os.ReadFile("database/postgres/schema.sql")
 	if err != nil {
 		cleanup()
 		return nil, nil, err
 	}
 
+	// Apply the schema.
 	_, err = db.Exec(string(migration))
 	if err != nil {
 		cleanup()
