@@ -13,6 +13,9 @@ test:
 fmt:
 	go fmt ./...
 
+example: build
+	go run examples/hello/main.go
+
 clean:
 	go clean
 	@rm -r bin
