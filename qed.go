@@ -44,7 +44,7 @@ func (q *TaskQueue) RegisterHandler(queue string, handler func([]byte)) {
 func (q *TaskQueue) QueueTask(queue string, data []byte) (string, error) {
 	taskId := xid.New().String()
 	_, err := q.db.Exec(
-		"SELECT qed_enqueue($1, $2, $3, now())",
+		"SELECT qed_enqueue($1, $2, $3, 0)",
 		taskId, queue, data,
 	)
 	if err != nil {
