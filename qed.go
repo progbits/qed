@@ -2,8 +2,9 @@ package qed
 
 import (
 	"database/sql"
+	"errors"
+	"fmt"
 	"github.com/rs/xid"
-	"log"
 	"sync"
 	"time"
 
@@ -21,13 +22,15 @@ type TaskQueue struct {
 
 // NewTaskQueue returns a new TaskQueue instance configured to use the
 // specified database connection for persistent task storage. Tasks are polled
-// and dispatched at an interval determined by the `tick` parameter.
-func NewTaskQueue(db *sql.DB, tick time.Duration) *TaskQueue {
+// and dispatched at an interval determined by the `tick` parameter. Tasks
+// which have not been acked after `timeout` are assumed to be blocked and will
+// be retried.
+func NewTaskQueue(db *sql.DB, tick, timeout time.Duration) *TaskQueue {
 	return &TaskQueue{
 		db:              db,
 		handlers:        make(map[string]func([]byte)),
 		tick:            tick,
-		reclaimInterval: time.Second * 60,
+		reclaimInterval: timeout,
 	}
 }
 
@@ -66,25 +69,19 @@ func (q *TaskQueue) QueueTaskWithDelay(queue string, data []byte, delay time.Dur
 
 // Run starts the main queue polling loop.
 func (q *TaskQueue) Run() error {
-	// Start background task to unblock stuck tasks.
-	go func() {
-		for {
-			err := q.reclaim()
-			if err != nil {
-				log.Printf("failed reclaim expired tasks: %s\n", err)
-			}
-			time.Sleep(q.tick)
-		}
-	}()
-
 	for {
 		time.Sleep(q.tick)
+
+		// Reclaim any stuck tasks.
+		err := q.reclaim()
+		if err != nil {
+			return err
+		}
 
 		// Fetch the next pending Task.
 		t, err := q.fetchNext()
 		if err != nil {
-			log.Printf("failed to fetch next task: %s\n", err)
-			continue
+			return err
 		}
 
 		if t == nil {
@@ -97,17 +94,14 @@ func (q *TaskQueue) Run() error {
 		handler, ok := q.handlers[t.queue]
 		q.mutex.RUnlock()
 		if !ok {
-			log.Printf("no handler registered for queue %s\n", t.queue)
-			continue
+			msg := fmt.Sprintf("no handle registered for queue %s", t.queue)
+			return errors.New(msg)
 		}
 
 		// Run the handler and ack the Task.
 		go func() {
 			handler(t.data)
-			err = q.ack(t.id)
-			if err != nil {
-				log.Printf("failed to ack task: %s\n", err)
-			}
+			_ = q.ack(t.id)
 		}()
 	}
 }
@@ -168,6 +162,6 @@ func (q *TaskQueue) reclaim() error {
 	query := `
         SELECT qed_unlock($1)
     `
-	_, err := q.db.Exec(query, q.reclaimInterval)
+	_, err := q.db.Exec(query, q.reclaimInterval.Seconds())
 	return err
 }

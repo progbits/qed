@@ -14,6 +14,7 @@ import (
 	"math/rand"
 	"os"
 	"strconv"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -140,7 +141,7 @@ func setupPostgres(t *testing.T) (*sql.DB, func(), error) {
 	return db, cleanup, nil
 }
 
-func TestQed(t *testing.T) {
+func TestNoHandler(t *testing.T) {
 	db, cleanup, err := setupPostgres(t)
 	if err != nil {
 		t.Fatal(err)
@@ -148,7 +149,32 @@ func TestQed(t *testing.T) {
 	defer cleanup()
 
 	// Create a new queue that will poll every 50 milliseconds.
-	taskQueue := NewTaskQueue(db, 50*time.Millisecond)
+	taskQueue := NewTaskQueue(db, 50*time.Millisecond, 60*time.Second)
+
+	_, err = taskQueue.QueueTask("foo", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	err = taskQueue.Run()
+	if err == nil {
+		t.Fatal("task run without handler")
+	}
+
+	if !strings.Contains(err.Error(), "foo") {
+		t.Fatal("expected queue name in error message")
+	}
+}
+
+func TestSimpleTasks(t *testing.T) {
+	db, cleanup, err := setupPostgres(t)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer cleanup()
+
+	// Create a new queue that will poll every 50 milliseconds.
+	taskQueue := NewTaskQueue(db, 50*time.Millisecond, 60*time.Second)
 
 	// Task handler sets the appropriate array item to done.
 	mutex := sync.Mutex{}
@@ -161,6 +187,14 @@ func TestQed(t *testing.T) {
 	// Register the handler.
 	taskQueue.RegisterHandler("test", handler)
 
+	// Start the task queue
+	go func() {
+		err = taskQueue.Run()
+		if err != nil {
+			t.Log(err)
+		}
+	}()
+
 	// Register tasks.
 	for i := 0; i < 64; i++ {
 		delay := time.Duration(rand.Int63n(60)) * time.Second
@@ -170,6 +204,53 @@ func TestQed(t *testing.T) {
 		}
 	}
 
+	// Wait until we have drained all tasks.
+	for {
+		remaining, err := taskQueue.size()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if remaining == 0 {
+			break
+		}
+		time.Sleep(250 * time.Millisecond)
+	}
+
+	// Check we handled each task.
+	for k, v := range items {
+		expected := k + "foo"
+		if v != expected {
+			t.Fatalf("failed to run task for item %s", k)
+		}
+	}
+}
+
+func TestExpiredTasks(t *testing.T) {
+	db, cleanup, err := setupPostgres(t)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer cleanup()
+
+	// Create a new queue that will poll every 50 milliseconds and reclaim
+	// tasks that have not been acked after 10 seconds.
+	taskQueue := NewTaskQueue(db, 50*time.Millisecond, 10*time.Second)
+
+	// Task handler sets the appropriate array item to done. The handler might
+	// block for longer than the ack timeout.
+	mutex := sync.Mutex{}
+	items := make(map[string]string)
+	handler := func(data []byte) {
+		if rand.Float32() < 0.5 {
+			time.Sleep(15 * time.Second)
+		}
+		mutex.Lock()
+		defer mutex.Unlock()
+		items[string(data)] = string(data) + "foo"
+	}
+	// Register the handler.
+	taskQueue.RegisterHandler("test", handler)
+
 	// Start the task queue
 	go func() {
 		err = taskQueue.Run()
@@ -177,6 +258,15 @@ func TestQed(t *testing.T) {
 			t.Log(err)
 		}
 	}()
+
+	// Register tasks.
+	for i := 0; i < 64; i++ {
+		delay := time.Duration(rand.Int63n(60)) * time.Second
+		err = taskQueue.QueueTaskWithDelay("test", []byte(strconv.Itoa(i)), delay)
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
 
 	// Wait until we have drained all tasks.
 	for {
