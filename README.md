@@ -1,6 +1,6 @@
 # Qed
 
-Qed is a simple, persistent Postgres backed task queue.
+Qed is a simple, persistent, Postgres backed task queue.
 
 ## Getting Started
 
