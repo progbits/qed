@@ -10,7 +10,7 @@ Qed leverages Postgres to persist state about running and pending tasks. The
 Qed schema migration can be found in
 [`database/migrations/postgres`](https://github.com/progbits/qed/tree/main/database/postgres).
 
-Migrations can be applied directly to a running Postgre instance as follows:
+Migrations can be applied directly to a running Postgres instance as follows:
 
 ```shell
 psql -U postgres -h localhost -f database/postgres/schema.sql
