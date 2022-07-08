@@ -20,17 +20,22 @@ type TaskQueue struct {
 	reclaimInterval time.Duration
 }
 
+type Options struct {
+	Tick    time.Duration
+	Timeout time.Duration
+}
+
 // NewTaskQueue returns a new TaskQueue instance configured to use the
 // specified database connection for persistent task storage. Tasks are polled
 // and dispatched at an interval determined by the `tick` parameter. Tasks
 // which have not been acked after `timeout` are assumed to be blocked and will
 // be retried.
-func NewTaskQueue(db *sql.DB, tick, timeout time.Duration) *TaskQueue {
+func NewTaskQueue(db *sql.DB, options Options) *TaskQueue {
 	return &TaskQueue{
 		db:              db,
 		handlers:        make(map[string]func([]byte)),
-		tick:            tick,
-		reclaimInterval: timeout,
+		tick:            options.Tick,
+		reclaimInterval: options.Timeout,
 	}
 }
 

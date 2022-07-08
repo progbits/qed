@@ -29,7 +29,8 @@ func main() {
 
 	// Create a new queue that will poll every 150 milliseconds and re-queue
 	// tasks that have not been acked after 60 seconds.
-	taskQueue := qed.NewTaskQueue(db, 150*time.Millisecond, 60*time.Second)
+	options := qed.Options{Tick: 150 * time.Millisecond, Timeout: 60 * time.Second}
+	taskQueue := qed.NewTaskQueue(db, options)
 
 	// Register the 'hello' queue handler.
 	taskQueue.RegisterHandler(queueName, func(data []byte) {

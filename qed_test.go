@@ -149,7 +149,8 @@ func TestNoHandler(t *testing.T) {
 	defer cleanup()
 
 	// Create a new queue that will poll every 50 milliseconds.
-	taskQueue := NewTaskQueue(db, 50*time.Millisecond, 60*time.Second)
+	options := Options{Tick: 50 * time.Millisecond, Timeout: 60 * time.Second}
+	taskQueue := NewTaskQueue(db, options)
 
 	_, err = taskQueue.QueueTask("foo", nil)
 	if err != nil {
@@ -174,7 +175,8 @@ func TestSimpleTasks(t *testing.T) {
 	defer cleanup()
 
 	// Create a new queue that will poll every 50 milliseconds.
-	taskQueue := NewTaskQueue(db, 50*time.Millisecond, 60*time.Second)
+	options := Options{Tick: 50 * time.Millisecond, Timeout: 60 * time.Second}
+	taskQueue := NewTaskQueue(db, options)
 
 	// Task handler sets the appropriate array item to done.
 	mutex := sync.Mutex{}
@@ -234,7 +236,8 @@ func TestExpiredTasks(t *testing.T) {
 
 	// Create a new queue that will poll every 50 milliseconds and reclaim
 	// tasks that have not been acked after 10 seconds.
-	taskQueue := NewTaskQueue(db, 50*time.Millisecond, 10*time.Second)
+	options := Options{Tick: 50 * time.Millisecond, Timeout: 10 * time.Second}
+	taskQueue := NewTaskQueue(db, options)
 
 	// Task handler sets the appropriate array item to done. The handler might
 	// block for longer than the ack timeout.
