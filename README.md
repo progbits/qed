@@ -16,7 +16,7 @@ Migrations can be applied directly to a running Postgres instance as follows:
 psql -U postgres -h localhost -f database/postgres/schema.sql
 ```
 
-### Examples
+### Running the Example
 
 A simple usage example can be found [here](https://github.com/progbits/qed/tree/main/examples).
 
