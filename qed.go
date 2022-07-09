@@ -164,7 +164,7 @@ func (q *TaskQueue) ack(taskId string) error {
 }
 
 // reclaim unlocks any tasks that have been locked for longer than the
-// specified `reclaimInterval`.
+// specified TaskQueue.reclaimInterval.
 func (q *TaskQueue) reclaim() error {
 	query := `
         SELECT qed_unlock($1)
