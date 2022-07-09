@@ -13,7 +13,7 @@ import (
 
 type TaskQueue struct {
 	mutex    sync.RWMutex
-	handlers map[string]func([]byte)
+	handlers map[string]func([]byte) error
 
 	db              *sql.DB
 	tick            time.Duration
@@ -33,7 +33,7 @@ type Options struct {
 func NewTaskQueue(db *sql.DB, options Options) *TaskQueue {
 	return &TaskQueue{
 		db:              db,
-		handlers:        make(map[string]func([]byte)),
+		handlers:        make(map[string]func([]byte) error),
 		tick:            options.Tick,
 		reclaimInterval: options.Timeout,
 	}
@@ -42,7 +42,7 @@ func NewTaskQueue(db *sql.DB, options Options) *TaskQueue {
 // RegisterHandler adds a new handler for the named queue. The handler is
 // invoked when a task is dequeued from the named queue. If a previous
 // handler was registered for the named queue, it will be replaced.
-func (q *TaskQueue) RegisterHandler(queue string, handler func([]byte)) {
+func (q *TaskQueue) RegisterHandler(queue string, handler func([]byte) error) {
 	q.mutex.Lock()
 	defer q.mutex.Unlock()
 	q.handlers[queue] = handler
@@ -103,9 +103,10 @@ func (q *TaskQueue) Run() error {
 			return errors.New(msg)
 		}
 
-		// Run the handler and ack the Task.
+		// Run the handler and ack the Task. Handler errors are explicitly
+		// ignored.
 		go func() {
-			handler(t.data)
+			_ = handler(t.data)
 			_ = q.ack(t.id)
 		}()
 	}

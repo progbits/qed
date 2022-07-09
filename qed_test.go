@@ -181,10 +181,11 @@ func TestSimpleTasks(t *testing.T) {
 	// Task handler sets the appropriate array item to done.
 	mutex := sync.Mutex{}
 	items := make(map[string]string)
-	handler := func(data []byte) {
+	handler := func(data []byte) error {
 		mutex.Lock()
 		defer mutex.Unlock()
 		items[string(data)] = string(data) + "foo"
+		return nil
 	}
 	// Register the handler.
 	taskQueue.RegisterHandler("test", handler)
@@ -243,13 +244,14 @@ func TestExpiredTasks(t *testing.T) {
 	// block for longer than the ack timeout.
 	mutex := sync.Mutex{}
 	items := make(map[string]string)
-	handler := func(data []byte) {
+	handler := func(data []byte) error {
 		if rand.Float32() < 0.5 {
 			time.Sleep(15 * time.Second)
 		}
 		mutex.Lock()
 		defer mutex.Unlock()
 		items[string(data)] = string(data) + "foo"
+		return nil
 	}
 	// Register the handler.
 	taskQueue.RegisterHandler("test", handler)

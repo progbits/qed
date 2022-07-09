@@ -33,8 +33,9 @@ func main() {
 	taskQueue := qed.NewTaskQueue(db, options)
 
 	// Register the 'hello' queue handler.
-	taskQueue.RegisterHandler(queueName, func(data []byte) {
-		fmt.Printf("hello %s\n", data)
+	taskQueue.RegisterHandler(queueName, func(data []byte) error {
+		_, err := fmt.Printf("hello %s\n", data)
+		return err
 	})
 
 	// Start the task queue.
