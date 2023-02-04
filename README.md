@@ -1,5 +1,7 @@
 # Qed
 
+[![Go](https://github.com/progbits/qed/actions/workflows/build.yaml/badge.svg?branch=main)](https://github.com/progbits/qed/actions/workflows/build.yaml)
+
 Qed is a simple, Postgres backed task queue.
 
 ## Getting Started
